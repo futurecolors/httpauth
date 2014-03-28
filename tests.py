@@ -48,7 +48,7 @@ def make_digest_app(**kwargs):
         **kwargs
     )
 
-def request(app, url, nonce=None, username=None, password=None, method='GET'):
+def request(app, url, nonce=None, username=None, password=None, method='GET', ip='127.0.0.1'):
     response = Response()
 
     def start_response(status_code, headers):
@@ -59,6 +59,7 @@ def request(app, url, nonce=None, username=None, password=None, method='GET'):
         'REQUEST_METHOD': method,
         'PATH_INFO': url.split('?')[0] if '?' in url else url,
         'QUERY_STRING': url.split('?')[1] if '?' in url else '',
+        'REMOTE_ADDR': ip,
     }
 
     if nonce:
@@ -113,6 +114,12 @@ def test_without_realm():
     response = request(app, '/')
     assert response.status_code == 401
     assert 'Digest realm=""' in response.headers['WWW-Authenticate']
+
+
+def test_exclude_ip():
+    app = make_dict_app(excluded_ips=['192.168.1.1/24'])
+    assert request(app, '/foo').status_code == 401
+    assert request(app, '/foo', ip='192.168.1.2').status_code == 200
 
 
 @raises(ValueError)

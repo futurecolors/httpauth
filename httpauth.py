@@ -14,6 +14,7 @@ import re
 import time
 import urllib2
 import hashlib
+import iptools
 
 
 def md5(x):
@@ -72,15 +73,19 @@ class BaseHttpAuthMiddleware(object):
     `routes`
        (optional) A list of regular expressions that specify which URLs should
        be secured. If not given, all routes are secured by default.
+    `excluded_ips`
+       (optional) A list of IP addresses and/or ranges for which to disable authentication.
+       Addresses must be in a format suitable for iptools: http://code.google.com/p/python-iptools/.
     """
-    def __init__(self, wsgi_app, realm=None, routes=()):
+    def __init__(self, wsgi_app, realm=None, routes=(), excluded_ips=()):
         self.wsgi_app = wsgi_app
         self.realm = realm or ''
         self.routes = self.compile_routes(routes)
+        self.excluded_ips = iptools.IpRangeList(*excluded_ips)
 
     def __call__(self, environ, start_response):
         environ['httpauth.uri'] = reconstruct_uri(environ)
-        if (self.should_require_authentication(environ['httpauth.uri']) and
+        if (self.should_require_authentication(environ['httpauth.uri'], environ['REMOTE_ADDR']) and
             not self.authenticate(environ)):
             # URL is secured and user hasn't sent authentication/wrong credentials.
             return self.challenge(environ, start_response)
@@ -91,10 +96,11 @@ class BaseHttpAuthMiddleware(object):
     def compile_routes(self, routes):
         return map(re.compile, routes)
 
-    def should_require_authentication(self, url):
+    def should_require_authentication(self, url, ip):
         """ Returns True if we should require authentication for the URL given """
-        return (not self.routes # require auth for all URLs
+        return ((not self.routes # require auth for all URLs
                 or any(route.match(url) for route in self.routes))
+                and ip not in self.excluded_ips)
 
     def authenticate(self, environ):
         """
